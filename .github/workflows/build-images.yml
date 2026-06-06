@@ -1,0 +1,74 @@
+name: Build and Push Images
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  # Forces registry path namespace matching to lowercase
+  IMAGE_BASE: ${{ github.repository_owner }}
+
+jobs:
+  build-and-push:
+    name: Build & Push Services
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: true
+      matrix:
+        component: [frontend, backend]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/uses/checkout@v4
+        with:
+          # Targets Github Action default path mappings
+          path: ''
+
+      - name: Set up Docker Buildx
+        uses: actions/docker-setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: actions/docker-login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Metadata (Tags & Labels)
+        id: meta
+        uses: actions/docker-metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}/demo-${{ matrix.component }}
+          tags: |
+            type=sha,format=short,prefix=sha-
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and Push Image
+        id: build-step
+        uses: actions/docker-build-push-action@v6
+        with:
+          context: ./app/${{ matrix.component }}
+          file: ./app/${{ matrix.component }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate Workflow Run Summary
+        run: |
+          echo "### Component: ${{ matrix.component }} successfully built!" >> $GITHUB_STEP_SUMMARY
+          echo "**Target Registry:** \`${{ env.REGISTRY }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Generated Tags Applied:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
