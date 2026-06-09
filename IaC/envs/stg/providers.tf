@@ -8,10 +8,10 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "vvd-cicd-task-tf-state"
-    key            = "infrastructure/stg/terraform.tfstate"
-    region         = "eu-west-3"
-    encrypt        = true
+    bucket  = "vvd-cicd-task-tf-state"
+    key     = "infrastructure/stg/terraform.tfstate"
+    region  = "eu-west-3"
+    encrypt = true
   }
 }
 
