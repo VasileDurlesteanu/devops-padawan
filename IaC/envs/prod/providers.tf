@@ -6,9 +6,13 @@ terraform {
       version = "~> 2.23.0"
     }
   }
+
+  backend "s3" {
+    bucket         = "vvd-cicd-task-tf-state"
+    key            = "infrastructure/prod/terraform.tfstate"
+    region         = "eu-west-3"
+    encrypt        = true
+  }
 }
 
-provider "kubernetes" {
-  # Directs Terraform to interact with the local Docker Desktop K8S cluster
-  config_path = "~/.kube/config"
-}
+provider "kubernetes" {}
