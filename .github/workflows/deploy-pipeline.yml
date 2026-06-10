@@ -51,14 +51,14 @@ jobs:
       - name: Helm Lint and Deploy Stack
         run: |
           echo "Linting Helm Chart..."
-          helm lint K8S/helm/users-stack
+          helm lint K8S/users-stack
           
           if [ "${{ inputs.action }}" = "rollback" ]; then
             echo "Executing Rollback to revision ${{ inputs.rollback_revision }}..."
             helm rollback users-stack ${{ inputs.rollback_revision }}
           else
             echo "Executing Automated Release Upgrade/Installation..."
-            helm upgrade --install users-stack K8S/helm/users-stack \
+            helm upgrade --install users-stack K8S/users-stack \
               --set frontend.image.tag=${{ env.FE_TAG }} \
               --set backend.image.tag=${{ env.BE_TAG }} \
               --create-namespace \
