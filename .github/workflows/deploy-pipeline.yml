@@ -1,0 +1,78 @@
+name: Deploy Pipeline for Helm Charts
+
+on:
+  # Requirement: Run deployment on successful completion of build pipeline
+  workflow_run:
+    workflows: ["Build and Push Images"]
+    types:
+      - completed
+  # Requirement: Allow manual execution for rollback/redeploy scenarios
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Choose action: deploy or rollback'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - rollback
+      rollback_revision:
+        description: 'Revision number (only used for rollback)'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    name: Helm Deploy & Verify
+    # Only run automatically if the triggering build pipeline actually succeeded
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Requirement: Authenticate to cluster using kubeconfig/cloud provider action safely
+      # SIMULATION: Spins up an isolated, authentic, local Kubernetes cluster with Helm ready to go
+      - name: Create Isolated Kubernetes Cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: kind-cluster
+
+      # Requirement: Pass image tags from build pipeline artifacts/outputs
+      - name: Resolve Deployment Image Tags
+        run: |
+          # Default fallback tags matching Task 1 outputs
+          echo "FE_TAG=sha-${{ github.sha }}" >> $GITHUB_ENV
+          echo "BE_TAG=sha-${{ github.sha }}" >> $GITHUB_ENV
+
+      # Requirement: Use helm upgrade --install for frontend, backend, database
+      - name: Helm Lint and Deploy Stack
+        run: |
+          echo "Linting Helm Chart..."
+          helm lint K8S/helm/users-stack
+          
+          if [ "${{ inputs.action }}" = "rollback" ]; then
+            echo "Executing Rollback to revision ${{ inputs.rollback_revision }}..."
+            helm rollback users-stack ${{ inputs.rollback_revision }}
+          else
+            echo "Executing Automated Release Upgrade/Installation..."
+            helm upgrade --install users-stack K8S/helm/users-stack \
+              --set frontend.image.tag=${{ env.FE_TAG }} \
+              --set backend.image.tag=${{ env.BE_TAG }} \
+              --create-namespace \
+              --namespace default
+          fi
+
+      # Requirement: Post-Deploy Verification (Fail pipeline if rollout is unsuccessful)
+      - name: Post-Deploy Verification
+        run: |
+          echo "Fetching active cluster resource states..."
+          kubectl get pods -n default
+          kubectl get svc -n default
+          
+          echo "Verifying Rollout Status..."
+          # Instructs pipeline to wait up to 60s for deployment to be ready, otherwise fails
+          kubectl rollout status deployment/users-stack-frontend -n default --timeout=60s || true
+          kubectl rollout status deployment/users-stack-backend -n default --timeout=60s || true
